@@ -23,7 +23,12 @@
     "email-digest",
     "privacy-first"
   ],
-  "author": "pbkhang404",
+  "author": "AndyKhang404",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndyKhang404/sloth-digest.git"
+  },
+  "homepage": "https://github.com/AndyKhang404/sloth-digest#readme",
   "license": "MIT",
   "dependencies": {
     "@mastra/core": "^1.79.0",

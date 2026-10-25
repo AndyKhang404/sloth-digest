@@ -98,8 +98,8 @@ Instead of waking up to 40 unread emails, scrolling through noise, and dreading 
 
 ```bash
 # Clone the repository
-git clone https://github.com/pbkhang404/dev-week3.git
-cd dev-week3
+git clone https://github.com/AndyKhang404/sloth-digest.git
+cd sloth-digest
 
 # Install dependencies
 npm install
@@ -224,5 +224,6 @@ npm run seed
 - **Tag:** `#hf26challenge`
 - **Primary Category:** Best Use of Gemma ($200)
 - **Secondary Categories:** Best Use of Temporal ($100), Best Use of Mastra ($100)
-- **Author:** AndyKhang404
+- **Repository:** [https://github.com/AndyKhang404/sloth-digest](https://github.com/AndyKhang404/sloth-digest)
+- **Author:** [AndyKhang404](https://github.com/AndyKhang404)
 - **License:** MIT
