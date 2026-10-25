@@ -15,17 +15,17 @@ services:
     volumes:
       - ./models:/models:ro
 
-  # 2. Temporal Dev Server (Persistent SQLite storage + Built-in Web UI)
+  # 2. Temporal Dev Server (Persistent SQLite storage + Built-in Web UI, non-root 'temporal' user)
   temporal:
     image: temporalio/admin-tools:latest
     container_name: sloth-temporal
     restart: unless-stopped
-    entrypoint: ["temporal", "server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/data/temporal.db", "--ui-port", "8233"]
+    entrypoint: ["temporal", "server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/home/temporal/temporal.db", "--ui-port", "8233"]
     ports:
       - "127.0.0.1:7233:7233"
       - "127.0.0.1:8233:8233"
     volumes:
-      - ./data/temporal:/data
+      - temporal_data:/home/temporal
 
   # 3. Self-hosted ntfy Push Notification Gateway
   ntfy:
@@ -38,9 +38,11 @@ services:
     volumes:
       - ntfy_cache:/var/cache/ntfy
 
-  # 4. Sloth Digest Application (Unified Worker + LAN Dashboard)
+  # 4. Sloth Digest Application (Unified Worker + LAN Dashboard, non-root 'node' user)
   app:
     build: .
+    image: sloth-app:latest
+    pull_policy: build
     container_name: sloth-app
     restart: unless-stopped
     env_file:
@@ -63,4 +65,5 @@ services:
       - ntfy
 
 volumes:
+  temporal_data:
   ntfy_cache:
