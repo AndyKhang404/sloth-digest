@@ -72,6 +72,11 @@ export async function classifyEmailsActivity(): Promise<{
   };
 }
 
+export async function getActiveThreadsActivity(sinceIso: string): Promise<{ threadId: string; subject: string }[]> {
+  const threads = dbService.getPersonalThreadsSince(sinceIso);
+  return threads.map((t) => ({ threadId: t.thread_id, subject: t.subject }));
+}
+
 export interface SummarizeThreadInput {
   threadId: string;
   subject: string;

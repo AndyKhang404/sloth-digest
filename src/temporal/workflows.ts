@@ -4,6 +4,7 @@ import type * as activities from './activities.js';
 const {
   fetchNewEmailsActivity,
   classifyEmailsActivity,
+  getActiveThreadsActivity,
   summarizeThreadActivity,
   reduceAndGenerateDigestActivity,
   deliverNotificationActivity,
@@ -39,11 +40,8 @@ export async function nightlyEmailDigestWorkflow(options: WorkflowOptions = {}):
   await classifyEmailsActivity();
 
   // 3. Summarize threads
-  // Either use provided sample threads or fetch from SQLite through activities
-  const targetThreads = options.sampleThreads || [
-    { threadId: 'gm-demo-proposal', subject: 'Urgent: Project Proposal Review for Q4' },
-    { threadId: 'gm-demo-lunch', subject: 'Team dinner & sprint retrospective plans' },
-  ];
+  const discoveredThreads = await getActiveThreadsActivity(sinceDate);
+  const targetThreads = options.sampleThreads || discoveredThreads;
 
   const threadOutputs = [];
   for (const thread of targetThreads) {
