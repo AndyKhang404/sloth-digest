@@ -20,13 +20,12 @@ services:
     image: temporalio/admin-tools:latest
     container_name: sloth-temporal
     restart: unless-stopped
-    user: root
     entrypoint: ["temporal", "server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/data/temporal.db", "--ui-port", "8233"]
     ports:
       - "7233:7233"
       - "8233:8233"
     volumes:
-      - temporal_data:/data
+      - ./data/temporal:/data
 
   # 3. Self-hosted ntfy Push Notification Gateway
   ntfy:
@@ -65,5 +64,4 @@ services:
       - ntfy
 
 volumes:
-  temporal_data:
   ntfy_cache:
