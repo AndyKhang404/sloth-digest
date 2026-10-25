@@ -33,6 +33,24 @@ export function createImapClient(): ImapFlow {
   });
 }
 
+const INITIAL_LOOKBACK_HOURS = 48;
+const MAX_MESSAGES_PER_SYNC = 50;
+const MAX_BODY_BYTES = 100_000; // 100 KB cap per message body (avoids downloading large attachments)
+
+function collectAttachments(node?: any, acc: { filename?: string }[] = []): { filename?: string }[] {
+  if (!node) return acc;
+  const filename = node.dispositionParameters?.filename || node.parameters?.name;
+  if (filename && (node.disposition === 'attachment' || !String(node.type || '').startsWith('text/'))) {
+    acc.push({ filename });
+  }
+  if (Array.isArray(node.childNodes)) {
+    for (const child of node.childNodes) {
+      collectAttachments(child, acc);
+    }
+  }
+  return acc;
+}
+
 /**
  * Ingest new messages from INBOX and Sent mailbox in read-only EXAMINE mode.
  */
@@ -57,7 +75,7 @@ export async function ingestGmailMessages(client?: ImapFlow): Promise<IngestResu
     const inboxLock = await imap.getMailboxLock('INBOX', { readOnly: true });
     try {
       const mailbox = imap.mailbox;
-      if (mailbox) {
+      if (mailbox && mailbox.exists > 0) {
         const uidvalidity = String(mailbox.uidValidity);
         const cursor = dbService.getCursor(accountId, 'INBOX');
 
@@ -66,17 +84,35 @@ export async function ingestGmailMessages(client?: ImapFlow): Promise<IngestResu
           lastUid = cursor.last_uid;
         }
 
-        const range = `${lastUid + 1}:*`;
-        if (mailbox.exists > 0) {
+        let targetUids: number[] = [];
+        if (lastUid > 0) {
+          const found = await imap.search({ uid: `${lastUid + 1}:*` }, { uid: true });
+          targetUids = (found || []).filter((u) => u > lastUid).slice(-MAX_MESSAGES_PER_SYNC);
+        } else {
+          // First run: only look back 48 hours (capped at MAX_MESSAGES_PER_SYNC) instead of entire mailbox history
+          const since = new Date(Date.now() - INITIAL_LOOKBACK_HOURS * 3600 * 1000);
+          const found = await imap.search({ since }, { uid: true });
+          targetUids = (found || []).slice(-MAX_MESSAGES_PER_SYNC);
+        }
+
+        if (targetUids.length > 0) {
           let highestUid = lastUid;
 
-          for await (const message of imap.fetch(range, {
-            uid: true,
-            envelope: true,
-            headers: ['x-gm-thrid', 'list-unsubscribe', 'precedence', 'references', 'in-reply-to'],
-            bodyParts: ['text'],
-            source: true,
-          })) {
+          for await (const message of imap.fetch(
+            targetUids,
+            {
+              uid: true,
+              envelope: true,
+              bodyStructure: true,
+              headers: ['x-gm-thrid', 'list-unsubscribe', 'precedence', 'references', 'in-reply-to'],
+              bodyParts: [
+                { key: '1', maxLength: MAX_BODY_BYTES },
+                { key: '1.1', maxLength: MAX_BODY_BYTES },
+                { key: 'TEXT', maxLength: MAX_BODY_BYTES },
+              ],
+            },
+            { uid: true }
+          )) {
             if (message.uid <= lastUid) continue;
             if (message.uid > highestUid) highestUid = message.uid;
 
@@ -101,9 +137,14 @@ export async function ingestGmailMessages(client?: ImapFlow): Promise<IngestResu
               ? `ref-${inReplyToMatch[1]}`
               : `subj-${subject.toLowerCase().replace(/^(re|fwd):\s*/i, '').trim()}`;
 
-            // Body text
-            const rawBody = message.source ? message.source.toString() : '';
-            const cleaned = cleanEmailBody(rawBody);
+            // Prefer primary text body part (1.1 or 1) before falling back to capped TEXT
+            const part1_1 = message.bodyParts?.get('1.1')?.toString('utf-8');
+            const part1 = message.bodyParts?.get('1')?.toString('utf-8');
+            const partText = message.bodyParts?.get('TEXT')?.toString('utf-8');
+            const rawBody = part1_1 || part1 || partText || '';
+
+            const attachments = collectAttachments(message.bodyStructure);
+            const cleaned = cleanEmailBody(rawBody, false, attachments);
 
             const emailRecord: Omit<EmailRecord, 'created_at'> = {
               message_id: messageId,
@@ -133,6 +174,9 @@ export async function ingestGmailMessages(client?: ImapFlow): Promise<IngestResu
           if (highestUid > lastUid) {
             dbService.setCursor(accountId, 'INBOX', uidvalidity, highestUid);
           }
+        } else if (lastUid === 0 && mailbox.uidNext) {
+          // Record current mailbox head so subsequent runs only inspect newly arriving mail
+          dbService.setCursor(accountId, 'INBOX', uidvalidity, Math.max(0, Number(mailbox.uidNext) - 1));
         }
       }
     } finally {
@@ -165,43 +209,60 @@ export async function ingestGmailMessages(client?: ImapFlow): Promise<IngestResu
             lastUid = cursor.last_uid;
           }
 
-          const range = `${lastUid + 1}:*`;
-          let highestUid = lastUid;
-
-          for await (const message of imap.fetch(range, {
-            uid: true,
-            envelope: true,
-            headers: ['x-gm-thrid', 'in-reply-to', 'references'],
-          })) {
-            if (message.uid <= lastUid) continue;
-            if (message.uid > highestUid) highestUid = message.uid;
-
-            const envelope = message.envelope;
-            if (!envelope) continue;
-
-            const messageId = envelope.messageId || `<sent-uid-${message.uid}@gmail.com>`;
-            const rawHeaders = message.headers ? message.headers.toString() : '';
-            const threadMatch = rawHeaders.match(/x-gm-thrid:\s*([0-9]+)/i);
-            const inReplyToMatch = rawHeaders.match(/in-reply-to:\s*(<[^>]+>)/i);
-            const date = envelope.date ? new Date(envelope.date).toISOString() : new Date().toISOString();
-
-            const threadId = threadMatch
-              ? `gm-${threadMatch[1]}`
-              : inReplyToMatch
-              ? `ref-${inReplyToMatch[1]}`
-              : `subj-${(envelope.subject || '').toLowerCase().replace(/^(re|fwd):\s*/i, '').trim()}`;
-
-            sentReplies.push({
-              messageId,
-              inReplyTo: inReplyToMatch ? inReplyToMatch[1] : undefined,
-              threadId,
-              date,
-            });
-            sentCount++;
+          let targetSentUids: number[] = [];
+          if (lastUid > 0) {
+            const found = await imap.search({ uid: `${lastUid + 1}:*` }, { uid: true });
+            targetSentUids = (found || []).filter((u) => u > lastUid).slice(-MAX_MESSAGES_PER_SYNC);
+          } else {
+            const since = new Date(Date.now() - INITIAL_LOOKBACK_HOURS * 3600 * 1000);
+            const found = await imap.search({ since }, { uid: true });
+            targetSentUids = (found || []).slice(-MAX_MESSAGES_PER_SYNC);
           }
 
-          if (highestUid > lastUid) {
-            dbService.setCursor(accountId, 'SENT', uidvalidity, highestUid);
+          if (targetSentUids.length > 0) {
+            let highestUid = lastUid;
+
+            for await (const message of imap.fetch(
+              targetSentUids,
+              {
+                uid: true,
+                envelope: true,
+                headers: ['x-gm-thrid', 'in-reply-to', 'references'],
+              },
+              { uid: true }
+            )) {
+              if (message.uid <= lastUid) continue;
+              if (message.uid > highestUid) highestUid = message.uid;
+
+              const envelope = message.envelope;
+              if (!envelope) continue;
+
+              const messageId = envelope.messageId || `<sent-uid-${message.uid}@gmail.com>`;
+              const rawHeaders = message.headers ? message.headers.toString() : '';
+              const threadMatch = rawHeaders.match(/x-gm-thrid:\s*([0-9]+)/i);
+              const inReplyToMatch = rawHeaders.match(/in-reply-to:\s*(<[^>]+>)/i);
+              const date = envelope.date ? new Date(envelope.date).toISOString() : new Date().toISOString();
+
+              const threadId = threadMatch
+                ? `gm-${threadMatch[1]}`
+                : inReplyToMatch
+                ? `ref-${inReplyToMatch[1]}`
+                : `subj-${(envelope.subject || '').toLowerCase().replace(/^(re|fwd):\s*/i, '').trim()}`;
+
+              sentReplies.push({
+                messageId,
+                inReplyTo: inReplyToMatch ? inReplyToMatch[1] : undefined,
+                threadId,
+                date,
+              });
+              sentCount++;
+            }
+
+            if (highestUid > lastUid) {
+              dbService.setCursor(accountId, 'SENT', uidvalidity, highestUid);
+            }
+          } else if (lastUid === 0 && mailbox.uidNext) {
+            dbService.setCursor(accountId, 'SENT', uidvalidity, Math.max(0, Number(mailbox.uidNext) - 1));
           }
         }
       } finally {

@@ -13,16 +13,26 @@ export function cleanEmailBody(
   isHtml = false,
   attachments: { filename?: string }[] = []
 ): CleanedEmailBody {
-  // Strip invisible zero-width, bidirectional override, and non-whitespace control characters
-  let plain = (rawHtmlOrText || '').replace(
+  // Cap raw input at 200 KB before processing to avoid parsing multi-megabyte MIME payloads
+  const MAX_RAW_INPUT = 200_000;
+  let plain = (rawHtmlOrText || '').slice(0, MAX_RAW_INPUT).replace(
     /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g,
     ''
   );
+
+  // Strip raw MIME part headers and long base64-encoded blocks if present
+  plain = plain
+    .replace(/^--[^\r\n]+$/gm, '')
+    .replace(/^Content-(Type|Transfer-Encoding|Disposition|ID):[^\r\n]*(\r?\n[ \t]+[^\r\n]*)*/gim, '')
+    .replace(/(?:^[A-Za-z0-9+/=]{60,}\r?\n){3,}/gm, '[binary attachment omitted]\n');
 
   // 1. Convert HTML to clean text if necessary
   if (isHtml || /<[a-z][\s\S]*>/i.test(plain)) {
     plain = convert(plain, {
       wordwrap: false,
+      limits: {
+        maxInputLength: MAX_RAW_INPUT,
+      },
       selectors: [
         { selector: 'img', format: 'skip' },
         { selector: 'style', format: 'skip' },

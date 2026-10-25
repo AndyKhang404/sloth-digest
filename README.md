@@ -139,53 +139,77 @@ Open **`http://localhost:3000`** in your browser to inspect the interactive exec
 # Gmail IMAP Credentials (uses Gmail App Password with 2FA)
 GMAIL_USER=your-email@gmail.com
 GMAIL_APP_PASSWORD=your-16-char-app-password
+# Optional: Path to file containing password (for Docker secrets)
+# GMAIL_APP_PASSWORD_FILE=/run/secrets/gmail_password
 
-# llama.cpp Server (OpenAI-compatible /v1 endpoint running Gemma 4B)
+# llama.cpp Server (OpenAI-compatible /v1 endpoint running Gemma)
 LLAMA_SERVER_URL=http://localhost:8080
-LLAMA_MODEL_NAME=gemma-2-4b-it
+LLAMA_MODEL_NAME=gemma-2-2b-it
+LLAMA_MODEL_FILE=gemma-2-2b-it-Q4_K_M.gguf
 
 # Temporal Orchestration
 TEMPORAL_ADDRESS=localhost:7233
 TEMPORAL_NAMESPACE=default
 TEMPORAL_TASK_QUEUE=sloth-digest
+DIGEST_SCHEDULE_HOUR=6
+DIGEST_SCHEDULE_MINUTE=0
 
 # ntfy Push Notifications (self-hosted LAN instance)
 NTFY_URL=http://localhost:8088/sloth-digest
 NTFY_SCHEDULE_TIME=07:00
 
-# Local Storage
+# Local Storage & Web Dashboard
 SQLITE_DB_PATH=./data/sloth.db
 DIGEST_OUTPUT_DIR=./data/digests
 WEB_PORT=3000
+# Optional: Require Bearer or HTTP Basic auth password on the web dashboard
+# WEB_AUTH_TOKEN=your-secret-dashboard-token
 ```
 
 ---
 
 ## 🐳 Full Homelab Deployment (Docker Compose)
 
-Deploy the entire self-contained stack (llama-server, Temporal dev server, Temporal Web UI, ntfy gateway, and Sloth Digest) with one command:
+Deploy the entire self-contained stack (`llama-server`, `temporal` dev server + built-in Web UI, `ntfy` push gateway, and the unified `sloth-app` worker + dashboard) with one command:
 
 ```bash
-# Place your Gemma GGUF model in ./models/gemma-2-4b-it.Q4_K_M.gguf
+# Place your quantized Gemma GGUF model in ./models/
 mkdir -p models
 
-# Start the stack
-docker compose up -d
+# Build and start all containers in the background
+docker compose up -d --build
 ```
 
-Services exposed:
+### Services & Port Bindings
 
-- **Sloth Digest Dashboard:** `http://localhost:3000`
-- **Temporal Web UI:** `http://localhost:8233`
-- **ntfy Push Gateway:** `http://localhost:8088`
-- **llama.cpp Server:** `http://localhost:8080`
+| Container | Service Role | Host Binding | Notes |
+| :--- | :--- | :--- | :--- |
+| `sloth-app` | Unified Temporal Worker + Web Dashboard | `0.0.0.0:3000` | Plain `http://` LAN/local dashboard (runs as non-root `node` user, `sloth_data` volume) |
+| `sloth-temporal` | Temporal Server + Built-in Web UI | `127.0.0.1:7233`, `127.0.0.1:8233` | Loopback-only gRPC & Web UI (runs as non-root `temporal` user, `temporal_data` volume) |
+| `sloth-ntfy` | Self-hosted Push Notification Server | `127.0.0.1:8088` | Loopback-only HTTP gateway (`ntfy_cache` volume) |
+| `sloth-llama` | Local Gemma GGUF Inference (`llama.cpp`) | `127.0.0.1:8080` | Loopback-only OpenAI-compatible `/v1` server (`./models` mounted read-only) |
+
+> **Note when connecting from another machine on your LAN:** Connect using plain HTTP (`http://<HOST_IP>:3000/`). If your browser has HTTPS-Only Mode enabled, disable it for `<HOST_IP>:3000` so the browser does not attempt a TLS handshake against the plain HTTP server.
+
+### Running Commands Inside the Container
+
+```bash
+# Seed synthetic demo emails inside the container volume
+docker exec -it sloth-app npx tsx scripts/seed-gmail.ts --local
+
+# Trigger the Temporal workflow immediately inside the stack
+docker exec -it sloth-app npx tsx src/cli.ts run-now
+
+# Register the 06:00 AM daily schedule in Temporal
+docker exec -it sloth-app npx tsx src/cli.ts schedule
+```
 
 ---
 
-## 💻 CLI Commands
+## 💻 CLI Commands (Local Host)
 
 ```bash
-# Run one-off digest workflow immediately
+# Run one-off digest workflow immediately (falls back to local execution if Temporal is offline)
 npm run sloth -- run-now
 
 # Run offline standalone pipeline without external Temporal
@@ -209,12 +233,20 @@ npm run seed
 
 ---
 
-## 🔒 Privacy & Security
+## 🔒 Privacy & Security Architecture
 
-1. **Read-Only IMAP Mode:** Ingest opens mailboxes using IMAP `EXAMINE` (RFC 3501 §6.3.2). It never marks emails as `\Seen`, moves messages, or deletes anything.
-2. **No Cloud LLM Calls:** All inference runs on your own hardware via llama.cpp.
-3. **Local Persistence:** Data is stored strictly in a local SQLite database (`data/sloth.db`) with WAL mode enabled.
-4. **Secret Isolation:** Passwords can be passed via Docker Secrets or environment variables; no credentials are ever written to git.
+1. **Read-Only IMAP Mode:** Ingestion opens `INBOX` and `Sent` mailboxes strictly using IMAP `EXAMINE` (RFC 3501 §6.3.2). It never marks emails as `\Seen`, modifies flags, or deletes messages.
+2. **Zero Cloud Calls & Loopback Isolation:** All LLM inference runs locally on `llama.cpp`. Internal infrastructure ports (`llama-server`, `temporal`, `ntfy`) are bound strictly to `127.0.0.1` on the host.
+3. **Optional Dashboard Authentication:** Setting `WEB_AUTH_TOKEN` (or `WEB_AUTH_TOKEN_FILE`) protects all dashboard and API routes with constant-time (`crypto.timingSafeEqual`) HTTP Basic and Bearer token verification.
+4. **Indirect Prompt Injection Defenses:**
+   - Email HTML is converted to plain text with `<script>`, `<style>`, `<img>`, and hrefs stripped, alongside removal of invisible zero-width and bidirectional override Unicode characters.
+   - Untrusted email fields are isolated inside `<untrusted_email_data>` XML boundaries with anti-breakout tag neutralization.
+   - LLM outputs are validated against strict `zod` schemas, and any Message-ID cited as needing a reply is cross-checked against an allowlist of actual Message-IDs in the thread.
+5. **Web Dashboard XSS, CSRF, & DoS Hardening:**
+   - All dynamic email metadata and LLM summaries are HTML- and attribute-escaped before rendering.
+   - Inline event handlers are disabled via `Content-Security-Policy` (`script-src-attr 'none'; frame-ancestors 'none'`) alongside `X-Content-Type-Options: nosniff` and `X-Frame-Options: DENY`.
+   - `POST /api/dismiss` enforces same-origin verification, `Content-Type: application/json`, and a strict 4 KB request body cap.
+6. **Non-Root Containers & Restrictive File Permissions:** Both `sloth-app` (`USER node`) and `sloth-temporal` (`USER temporal`) execute as non-root `UID 1000` users with `0600`/`0700` file and directory permissions on SQLite and digest artifacts.
 
 ---
 
