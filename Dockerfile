@@ -6,14 +6,18 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 COPY package*.json ./
-RUN npm install --omit=dev
+# Install dependencies including devDependencies (typescript)
+RUN npm install
 
 COPY tsconfig.json ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 
 # Compile TypeScript
-RUN npx tsc
+RUN npm run build
+
+# Remove devDependencies to keep container image lightweight
+RUN npm prune --omit=dev
 
 EXPOSE 3000
 
