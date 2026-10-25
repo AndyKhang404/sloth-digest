@@ -1,0 +1,81 @@
+services:
+  # 1. Local LLM Server (Gemma 4B via llama.cpp)
+  llama-server:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: sloth-llama
+    restart: unless-stopped
+    command: >
+      -m /models/gemma-2-4b-it.Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8080
+      -c 8192
+      -np 1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/models:ro
+
+  # 2. Temporal Dev Server (Persistent SQLite storage)
+  temporal:
+    image: temporalio/admin-tools:latest
+    container_name: sloth-temporal
+    restart: unless-stopped
+    entrypoint: ["temporal", "server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/data/temporal.db"]
+    ports:
+      - "7233:7233"
+    volumes:
+      - temporal_data:/data
+
+  # 3. Temporal Web UI
+  temporal-ui:
+    image: temporalio/ui:latest
+    container_name: sloth-temporal-ui
+    restart: unless-stopped
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8233
+    ports:
+      - "8233:8080"
+    depends_on:
+      - temporal
+
+  # 4. Self-hosted ntfy Push Notification Gateway
+  ntfy:
+    image: binwiederhier/ntfy:latest
+    container_name: sloth-ntfy
+    restart: unless-stopped
+    command: serve --cache-file /var/cache/ntfy/cache.db
+    ports:
+      - "8088:80"
+    volumes:
+      - ntfy_cache:/var/cache/ntfy
+
+  # 5. Sloth Digest Application (Worker + LAN Dashboard)
+  app:
+    build: .
+    container_name: sloth-app
+    restart: unless-stopped
+    environment:
+      - GMAIL_USER=${GMAIL_USER}
+      - GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD}
+      - LLAMA_SERVER_URL=http://llama-server:8080
+      - LLAMA_MODEL_NAME=gemma-2-4b-it
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_TASK_QUEUE=sloth-digest
+      - NTFY_URL=http://ntfy/sloth-digest
+      - NTFY_SCHEDULE_TIME=07:00
+      - SQLITE_DB_PATH=/app/data/sloth.db
+      - DIGEST_OUTPUT_DIR=/app/data/digests
+      - WEB_PORT=3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - temporal
+      - llama-server
+      - ntfy
+
+volumes:
+  temporal_data:
+  ntfy_cache:
