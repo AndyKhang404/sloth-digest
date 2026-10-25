@@ -93,7 +93,11 @@ async function triggerTemporalWorkflow() {
 }
 
 async function setupTemporalSchedule() {
-  console.log(`Configuring 03:00 AM nightly Temporal schedule at ${config.temporal.address}...`);
+  const hour = config.temporal.scheduleHour;
+  const minute = config.temporal.scheduleMinute;
+  const timeDisplay = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} AM`;
+
+  console.log(`Configuring ${timeDisplay} morning Temporal schedule at ${config.temporal.address}...`);
   try {
     const connection = await Connection.connect({ address: config.temporal.address });
     const client = new Client({ connection, namespace: config.temporal.namespace });
@@ -103,7 +107,7 @@ async function setupTemporalSchedule() {
       await client.schedule.create({
         scheduleId,
         spec: {
-          calendars: [{ hour: 3, minute: 0 }],
+          calendars: [{ hour, minute }],
         },
         action: {
           type: 'startWorkflow',
@@ -115,7 +119,7 @@ async function setupTemporalSchedule() {
           catchupWindow: '4h', // If the homelab was asleep or rebooting, catch up within 4 hours
         },
       });
-      console.log(`✅ Schedule '${scheduleId}' registered to run every night at 03:00.`);
+      console.log(`✅ Schedule '${scheduleId}' registered to run every morning at ${timeDisplay}.`);
     } catch (e) {
       if (e instanceof ScheduleAlreadyRunning) {
         console.log(`Schedule '${scheduleId}' already exists and is active.`);
@@ -196,7 +200,7 @@ async function main() {
 Commands:
   npm run sloth -- run-now    Trigger digest workflow immediately
   npm run sloth -- run-local  Run standalone local pipeline without external Temporal server
-  npm run sloth -- schedule   Register 03:00 AM nightly Temporal schedule
+  npm run sloth -- schedule   Register 06:00 AM morning Temporal schedule
   npm run sloth -- debt       List current pending reply debt items
   npm run sloth -- dismiss ID Manually dismiss a reply debt item
   npm run sloth -- serve      Launch LAN web dashboard (port ${config.storage.webPort})

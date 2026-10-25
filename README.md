@@ -1,7 +1,7 @@
 # 🦥 Sloth Digest
 
 > **Private Overnight Gmail Executive Briefing & Reply-Debt Tracker**  
-> *Built for Hacktoberfest 2026 Week 3: "Slow and Steady"*  
+> _Built for Hacktoberfest 2026 Week 3: "Slow and Steady"_  
 > **Lead Category:** Best Use of Gemma ($200) • **Secondary:** Best Use of Temporal, Best Use of Mastra
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -14,10 +14,11 @@
 
 ## 📖 What is Sloth Digest?
 
-In honor of **International Sloth Day** and the Hacktoberfest 2026 *"Slow and Steady"* theme, **Sloth Digest** channels your inner sloth by doing the dreaded morning email catch-up while you sleep.
+In honor of **International Sloth Day** and the Hacktoberfest 2026 _"Slow and Steady"_ theme, **Sloth Digest** channels your inner sloth by doing the dreaded morning email catch-up while you sleep.
 
 Instead of waking up to 40 unread emails, scrolling through noise, and dreading forgotten replies:
-1. **Sleep through the night:** At 3:00 AM, a durable **Temporal** workflow wakes up on your home server.
+
+1. **Sleep through the night:** At 6:00 AM, a durable **Temporal** workflow wakes up on your home server.
 2. **Read-only triage:** It examines new emails in your Gmail inbox without modifying read flags or leaving your local network.
 3. **Local AI synthesis:** An open-weight **Gemma 4B** model running on **llama.cpp** categorizes bulk mail, summarizes personal threads into **strictly two lines**, and extracts direct asks.
 4. **Durable Reply Debt:** Unanswered questions are ledgered into your persistent SQLite database. When you reply during the day, inspecting your `Sent` folder auto-clears the debt.
@@ -29,12 +30,12 @@ Instead of waking up to 40 unread emails, scrolling through noise, and dreading 
 
 ## 🦥 The Lazy Payoff
 
-| Without Sloth Digest | With Sloth Digest |
-| :--- | :--- |
-| 45 minutes spent sifting through newsletters, alerts, and multi-reply threads | **2-minute** executive briefing at breakfast |
-| Anxiously searching "Did I reply to Sarah?" | Auto-tracked **Reply Debt** with days pending |
-| Private emails sent to proprietary cloud AI APIs | **100% local inference** with Gemma 4B on CPU |
-| Email clients marking things read prematurely | **Read-only IMAP (EXAMINE)** with UID cursors |
+| Without Sloth Digest                                                          | With Sloth Digest                             |
+| :---------------------------------------------------------------------------- | :-------------------------------------------- |
+| 45 minutes spent sifting through newsletters, alerts, and multi-reply threads | **2-minute** executive briefing at breakfast  |
+| Anxiously searching "Did I reply to Sarah?"                                   | Auto-tracked **Reply Debt** with days pending |
+| Private emails sent to proprietary cloud AI APIs                              | **100% local inference** with Gemma 4B on CPU |
+| Email clients marking things read prematurely                                 | **Read-only IMAP (EXAMINE)** with UID cursors |
 
 **Calculated Metric:** Based on the standard human reading rate of 238 words/minute, Sloth Digest saves **30 to 60+ minutes** of cognitive fatigue every morning.
 
@@ -88,11 +89,13 @@ Instead of waking up to 40 unread emails, scrolling through noise, and dreading 
 ## 🚀 Quickstart
 
 ### 1. Prerequisites
+
 - **Node.js 22+**
 - **npm**
 - (Optional for full containerized stack) **Docker & Docker Compose**
 
 ### 2. Installation
+
 ```bash
 # Clone the repository
 git clone https://github.com/pbkhang404/dev-week3.git
@@ -106,6 +109,7 @@ cp .env.example .env
 ```
 
 ### 3. Quick Local Verification (Zero Setup Needed!)
+
 You can test the entire pipeline immediately without configuring Gmail or external servers using our synthetic seed test:
 
 ```bash
@@ -124,6 +128,7 @@ npm run sloth -- debt
 # Launch the LAN dashboard
 npm run sloth -- serve
 ```
+
 Open **`http://localhost:3000`** in your browser to inspect the interactive executive briefing!
 
 ---
@@ -169,6 +174,7 @@ docker compose up -d
 ```
 
 Services exposed:
+
 - **Sloth Digest Dashboard:** `http://localhost:3000`
 - **Temporal Web UI:** `http://localhost:8233`
 - **ntfy Push Gateway:** `http://localhost:8088`
@@ -185,7 +191,7 @@ npm run sloth -- run-now
 # Run offline standalone pipeline without external Temporal
 npm run sloth -- run-local
 
-# Register the 03:00 AM nightly Temporal schedule
+# Register the 06:00 AM morning Temporal schedule
 npm run sloth -- schedule
 
 # Inspect pending reply debt items
@@ -218,5 +224,5 @@ npm run seed
 - **Tag:** `#hf26challenge`
 - **Primary Category:** Best Use of Gemma ($200)
 - **Secondary Categories:** Best Use of Temporal ($100), Best Use of Mastra ($100)
-- **Author:** pbkhang404
+- **Author:** AndyKhang404
 - **License:** MIT

@@ -32,6 +32,8 @@ export interface AppConfig {
     address: string;
     namespace: string;
     taskQueue: string;
+    scheduleHour: number;
+    scheduleMinute: number;
   };
   ntfy: {
     url: string;
@@ -71,6 +73,8 @@ export function loadConfig(): AppConfig {
       address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
       namespace: process.env.TEMPORAL_NAMESPACE || 'default',
       taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'sloth-digest',
+      scheduleHour: Number(process.env.DIGEST_SCHEDULE_HOUR) || 6,
+      scheduleMinute: Number(process.env.DIGEST_SCHEDULE_MINUTE) || 0,
     },
     ntfy: {
       url: process.env.NTFY_URL || 'http://localhost:8088/sloth-digest',
