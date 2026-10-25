@@ -418,7 +418,7 @@ export function escapeHtml(str: string): string {
 if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
   const server = createWebServer();
   const port = config.storage.webPort;
-  server.listen(port, () => {
-    console.log(`[web] Sloth Digest dashboard running at http://localhost:${port}/`);
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`[web] Sloth Digest dashboard running at http://0.0.0.0:${port}/`);
   });
 }

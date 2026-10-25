@@ -7,7 +7,7 @@ console.log('🦥 Starting Sloth Digest unified service...');
 // 1. Start LAN Dashboard
 const server = createWebServer();
 const port = config.storage.webPort;
-server.listen(port, () => {
+server.listen(port, '0.0.0.0', () => {
   console.log(`[web] Sloth Digest dashboard running at http://0.0.0.0:${port}/`);
 });
 
