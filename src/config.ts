@@ -49,7 +49,7 @@ export interface AppConfig {
 
 export function loadConfig(): AppConfig {
   const user = process.env.GMAIL_USER || '';
-  const appPassword = readSecretOrEnv('GMAIL_APP_PASSWORD', 'GMAIL_APP_PASSWORD_FILE');
+  const appPassword = readSecretOrEnv('GMAIL_APP_PASSWORD', 'GMAIL_APP_PASSWORD_FILE').replace(/\s+/g, '');
   const webAuthToken = readSecretOrEnv('WEB_AUTH_TOKEN', 'WEB_AUTH_TOKEN_FILE');
 
   const serverUrl = (process.env.LLAMA_SERVER_URL || 'http://localhost:8080').replace(/\/+$/, '');

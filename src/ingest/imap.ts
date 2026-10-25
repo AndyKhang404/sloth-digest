@@ -105,11 +105,7 @@ export async function ingestGmailMessages(client?: ImapFlow): Promise<IngestResu
               envelope: true,
               bodyStructure: true,
               headers: ['x-gm-thrid', 'list-unsubscribe', 'precedence', 'references', 'in-reply-to'],
-              bodyParts: [
-                { key: '1', maxLength: MAX_BODY_BYTES },
-                { key: '1.1', maxLength: MAX_BODY_BYTES },
-                { key: 'TEXT', maxLength: MAX_BODY_BYTES },
-              ],
+              source: { maxLength: MAX_BODY_BYTES },
             },
             { uid: true }
           )) {
@@ -137,11 +133,10 @@ export async function ingestGmailMessages(client?: ImapFlow): Promise<IngestResu
               ? `ref-${inReplyToMatch[1]}`
               : `subj-${subject.toLowerCase().replace(/^(re|fwd):\s*/i, '').trim()}`;
 
-            // Prefer primary text body part (1.1 or 1) before falling back to capped TEXT
-            const part1_1 = message.bodyParts?.get('1.1')?.toString('utf-8');
-            const part1 = message.bodyParts?.get('1')?.toString('utf-8');
-            const partText = message.bodyParts?.get('TEXT')?.toString('utf-8');
-            const rawBody = part1_1 || part1 || partText || '';
+            // Strip top-level RFC822 header block from capped 100 KB source
+            const rawSource = message.source ? message.source.toString('utf-8') : '';
+            const headerEndIdx = rawSource.search(/\r?\n\r?\n/);
+            const rawBody = headerEndIdx >= 0 ? rawSource.slice(headerEndIdx).trim() : rawSource;
 
             const attachments = collectAttachments(message.bodyStructure);
             const cleaned = cleanEmailBody(rawBody, false, attachments);
