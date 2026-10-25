@@ -1,9 +1,13 @@
-FROM node:22-alpine
+FROM node:22-slim
 
 WORKDIR /app
 
-# Install build dependencies for better-sqlite3 native compilation
-RUN apk add --no-cache python3 make g++
+# Install native build tools for better-sqlite3 compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
 # Install dependencies including devDependencies (typescript)
