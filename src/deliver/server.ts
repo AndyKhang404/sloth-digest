@@ -53,110 +53,118 @@ function isSameOrigin(req: http.IncomingMessage): boolean {
 
 export function createWebServer(): http.Server {
   const server = http.createServer((req, res) => {
-    for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
-      res.setHeader(k, v);
-    }
+    try {
+      for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+        res.setHeader(k, v);
+      }
 
-    if (!isAuthorized(req)) {
-      res.writeHead(401, {
-        'Content-Type': 'application/json',
-        'WWW-Authenticate': 'Basic realm="Sloth Digest"',
-      });
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
-      return;
-    }
-
-    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-
-    // API: Dismiss reply debt
-    if (req.method === 'POST' && url.pathname === '/api/dismiss') {
-      const contentType = req.headers['content-type'] || '';
-      if (!contentType.toLowerCase().startsWith('application/json') || !isSameOrigin(req)) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Forbidden: requires same-origin application/json request' }));
+      if (!isAuthorized(req)) {
+        res.writeHead(401, {
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': 'Basic realm="Sloth Digest"',
+        });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
         return;
       }
 
-      let body = '';
-      let bodyBytes = 0;
-      let aborted = false;
+      const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
-      req.on('data', (chunk: Buffer) => {
-        bodyBytes += chunk.length;
-        if (bodyBytes > MAX_BODY_BYTES) {
-          aborted = true;
-          res.writeHead(413, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Payload too large' }));
-          req.destroy();
+      // API: Dismiss reply debt
+      if (req.method === 'POST' && url.pathname === '/api/dismiss') {
+        const contentType = req.headers['content-type'] || '';
+        if (!contentType.toLowerCase().startsWith('application/json') || !isSameOrigin(req)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Forbidden: requires same-origin application/json request' }));
           return;
         }
-        body += chunk.toString('utf-8');
-      });
 
-      req.on('end', () => {
-        if (aborted) return;
-        try {
-          const parsed = JSON.parse(body || '{}');
-          const id = typeof parsed?.id === 'string' ? parsed.id.trim() : '';
-          if (!id || id.length > 128) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Invalid or missing id' }));
+        let body = '';
+        let bodyBytes = 0;
+        let aborted = false;
+
+        req.on('data', (chunk: Buffer) => {
+          bodyBytes += chunk.length;
+          if (bodyBytes > MAX_BODY_BYTES) {
+            aborted = true;
+            res.writeHead(413, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Payload too large' }));
+            req.destroy();
             return;
           }
-          const success = dbService.dismissReplyDebt(id);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success, id }));
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Malformed JSON body' }));
-        }
-      });
-      return;
-    }
+          body += chunk.toString('utf-8');
+        });
 
-    // API: Latest digest JSON
-    if (req.method === 'GET' && url.pathname === '/api/digest/latest') {
-      const recent = dbService.getRecentDigests(1);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(recent[0] || null));
-      return;
-    }
-
-    // HTML Dashboard
-    if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/digest/'))) {
-      const recentDigests = dbService.getRecentDigests(10);
-      const activeDebts = dbService.getOpenReplyDebt();
-      const formattedDebts = debtEngine.formatActiveDebtForDigest(activeDebts);
-
-      // Check if viewing a specific date
-      const dateParam = url.pathname.replace('/digest/', '');
-      const selectedDigest = dateParam && dateParam !== '/'
-        ? recentDigests.find((d) => d.digest_date === dateParam) || recentDigests[0]
-        : recentDigests[0];
-
-      // Read markdown file if present
-      let rawMarkdown = selectedDigest?.summary_markdown || '';
-      if (!rawMarkdown) {
-        const latestFile = path.join(config.storage.digestDir, 'latest.md');
-        if (fs.existsSync(latestFile)) {
-          rawMarkdown = fs.readFileSync(latestFile, 'utf-8');
-        }
+        req.on('end', () => {
+          if (aborted) return;
+          try {
+            const parsed = JSON.parse(body || '{}');
+            const id = typeof parsed?.id === 'string' ? parsed.id.trim() : '';
+            if (!id || id.length > 128) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Invalid or missing id' }));
+              return;
+            }
+            const success = dbService.dismissReplyDebt(id);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success, id }));
+          } catch {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Malformed JSON body' }));
+          }
+        });
+        return;
       }
 
-      const html = renderDashboardHtml({
-        selectedDigest,
-        recentDigests,
-        activeDebts: formattedDebts,
-        markdown: rawMarkdown,
-      });
+      // API: Latest digest JSON
+      if (req.method === 'GET' && url.pathname === '/api/digest/latest') {
+        const recent = dbService.getRecentDigests(1);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(recent[0] || null));
+        return;
+      }
 
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(html);
-      return;
+      // HTML Dashboard
+      if (req.method === 'GET' && (url.pathname === '/' || url.pathname.startsWith('/digest/'))) {
+        const recentDigests = dbService.getRecentDigests(10);
+        const activeDebts = dbService.getOpenReplyDebt();
+        const formattedDebts = debtEngine.formatActiveDebtForDigest(activeDebts);
+
+        // Check if viewing a specific date
+        const dateParam = url.pathname.replace('/digest/', '');
+        const selectedDigest = dateParam && dateParam !== '/'
+          ? recentDigests.find((d) => d.digest_date === dateParam) || recentDigests[0]
+          : recentDigests[0];
+
+        // Read markdown file if present
+        let rawMarkdown = selectedDigest?.summary_markdown || '';
+        if (!rawMarkdown) {
+          const latestFile = path.join(config.storage.digestDir, 'latest.md');
+          if (fs.existsSync(latestFile)) {
+            rawMarkdown = fs.readFileSync(latestFile, 'utf-8');
+          }
+        }
+
+        const html = renderDashboardHtml({
+          selectedDigest,
+          recentDigests,
+          activeDebts: formattedDebts,
+          markdown: rawMarkdown,
+        });
+
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(html);
+        return;
+      }
+
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not Found');
+    } catch (err) {
+      console.error('[web] Unhandled error serving request:', err);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+      }
+      res.end(JSON.stringify({ error: 'Internal server error' }));
     }
-
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not Found');
   });
 
   return server;

@@ -58,12 +58,13 @@ services:
     ports:
       - "${WEB_PORT:-3000}:${WEB_PORT:-3000}"
     volumes:
-      - ./data:/app/data
+      - sloth_data:/app/data
     depends_on:
       - temporal
       - llama-server
       - ntfy
 
 volumes:
+  sloth_data:
   temporal_data:
   ntfy_cache:

@@ -1,8 +1,12 @@
 import { config } from './config.js';
+import { getDb } from './db/index.js';
 import { createWebServer } from './deliver/server.js';
 import { startWorker } from './temporal/worker.js';
 
 console.log('🦥 Starting Sloth Digest unified service...');
+
+// Initialize SQLite schema eagerly at startup
+getDb();
 
 // 1. Start LAN Dashboard
 const server = createWebServer();
