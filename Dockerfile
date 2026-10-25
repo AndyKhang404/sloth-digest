@@ -17,4 +17,4 @@ RUN npx tsc
 
 EXPOSE 3000
 
-CMD ["node", "dist/deliver/server.js"]
+CMD ["node", "dist/index.js"]

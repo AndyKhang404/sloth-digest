@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function runWorker() {
+export async function startWorker() {
   console.log(`[worker] Connecting to Temporal server at ${config.temporal.address}...`);
 
   const connection = await NativeConnection.connect({
@@ -30,7 +30,9 @@ async function runWorker() {
   await worker.run();
 }
 
-runWorker().catch((err) => {
-  console.error('[worker] Worker encountered a fatal error:', err);
-  process.exit(1);
-});
+if (process.argv[1] && /worker\.(js|ts)$/.test(process.argv[1])) {
+  startWorker().catch((err) => {
+    console.error('[worker] Worker encountered a fatal error:', err);
+    process.exit(1);
+  });
+}

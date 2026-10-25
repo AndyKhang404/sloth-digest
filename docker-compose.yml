@@ -1,11 +1,11 @@
 services:
-  # 1. Local LLM Server (Gemma 4B via llama.cpp)
+  # 1. Local LLM Server (Gemma via llama.cpp)
   llama-server:
     image: ghcr.io/ggml-org/llama.cpp:server
     container_name: sloth-llama
     restart: unless-stopped
     command: >
-      -m /models/gemma-2-4b-it.Q4_K_M.gguf
+      -m /models/${LLAMA_MODEL_FILE:-gemma-2-2b-it-Q4_K_M.gguf}
       --host 0.0.0.0
       --port 8080
       -c 8192
@@ -50,27 +50,26 @@ services:
     volumes:
       - ntfy_cache:/var/cache/ntfy
 
-  # 5. Sloth Digest Application (Worker + LAN Dashboard)
+  # 5. Sloth Digest Application (Unified Worker + LAN Dashboard)
   app:
     build: .
     container_name: sloth-app
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      - GMAIL_USER=${GMAIL_USER}
-      - GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD}
+      # Container-to-container service networking overrides
       - LLAMA_SERVER_URL=http://llama-server:8080
-      - LLAMA_MODEL_NAME=gemma-2-4b-it
       - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_TASK_QUEUE=sloth-digest
       - NTFY_URL=http://ntfy/sloth-digest
-      - NTFY_SCHEDULE_TIME=07:00
       - SQLITE_DB_PATH=/app/data/sloth.db
       - DIGEST_OUTPUT_DIR=/app/data/digests
-      - WEB_PORT=3000
+      - WEB_PORT=${WEB_PORT:-3000}
     ports:
-      - "3000:3000"
+      - "${WEB_PORT:-3000}:${WEB_PORT:-3000}"
     volumes:
       - ./data:/app/data
+      - ./.env:/app/.env:ro
     depends_on:
       - temporal
       - llama-server
