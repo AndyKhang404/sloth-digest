@@ -21,7 +21,11 @@ COPY scripts/ ./scripts/
 RUN npm run build
 
 # Remove devDependencies to keep container image lightweight
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev \
+ && mkdir -p /app/data/digests \
+ && chown -R node:node /app
+
+USER node
 
 EXPOSE 3000
 

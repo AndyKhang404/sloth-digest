@@ -11,7 +11,7 @@ services:
       -c 8192
       -np 1
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./models:/models:ro
 
@@ -22,8 +22,8 @@ services:
     restart: unless-stopped
     entrypoint: ["temporal", "server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/data/temporal.db", "--ui-port", "8233"]
     ports:
-      - "7233:7233"
-      - "8233:8233"
+      - "127.0.0.1:7233:7233"
+      - "127.0.0.1:8233:8233"
     volumes:
       - ./data/temporal:/data
 
@@ -34,7 +34,7 @@ services:
     restart: unless-stopped
     command: serve --cache-file /var/cache/ntfy/cache.db
     ports:
-      - "8088:80"
+      - "127.0.0.1:8088:80"
     volumes:
       - ntfy_cache:/var/cache/ntfy
 
@@ -57,7 +57,6 @@ services:
       - "${WEB_PORT:-3000}:${WEB_PORT:-3000}"
     volumes:
       - ./data:/app/data
-      - ./.env:/app/.env:ro
     depends_on:
       - temporal
       - llama-server

@@ -43,12 +43,14 @@ export interface AppConfig {
     dbPath: string;
     digestDir: string;
     webPort: number;
+    webAuthToken: string;
   };
 }
 
 export function loadConfig(): AppConfig {
   const user = process.env.GMAIL_USER || '';
   const appPassword = readSecretOrEnv('GMAIL_APP_PASSWORD', 'GMAIL_APP_PASSWORD_FILE');
+  const webAuthToken = readSecretOrEnv('WEB_AUTH_TOKEN', 'WEB_AUTH_TOKEN_FILE');
 
   const serverUrl = (process.env.LLAMA_SERVER_URL || 'http://localhost:8080').replace(/\/+$/, '');
   const modelName = process.env.LLAMA_MODEL_NAME || 'gemma-2-4b-it';
@@ -84,6 +86,7 @@ export function loadConfig(): AppConfig {
       dbPath,
       digestDir,
       webPort: Number(process.env.WEB_PORT) || 3000,
+      webAuthToken,
     },
   };
 }

@@ -82,15 +82,15 @@ export function generateDigestMarkdown(payload: DigestPayload): string {
 
   // Save to disk
   if (!fs.existsSync(config.storage.digestDir)) {
-    fs.mkdirSync(config.storage.digestDir, { recursive: true });
+    fs.mkdirSync(config.storage.digestDir, { recursive: true, mode: 0o700 });
   }
 
   const filePath = path.join(config.storage.digestDir, `${payload.dateIso}.md`);
-  fs.writeFileSync(filePath, markdown, 'utf-8');
+  fs.writeFileSync(filePath, markdown, { encoding: 'utf-8', mode: 0o600 });
 
   // Also write latest.md for quick access
   const latestPath = path.join(config.storage.digestDir, 'latest.md');
-  fs.writeFileSync(latestPath, markdown, 'utf-8');
+  fs.writeFileSync(latestPath, markdown, { encoding: 'utf-8', mode: 0o600 });
 
   return markdown;
 }

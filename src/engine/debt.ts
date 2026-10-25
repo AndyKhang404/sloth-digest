@@ -29,12 +29,20 @@ export const debtEngine = {
       return { resolvedCount: 0, resolvedItems: [] };
     }
 
+    const normalizeMsgId = (id: string) => id.trim().replace(/^<+|>+$/g, '');
+
     for (const reply of sentReplies) {
+      const normalizedReplyTarget = reply.inReplyTo ? normalizeMsgId(reply.inReplyTo) : '';
+
       for (const debt of openDebts) {
         if (debt.status !== 'open') continue;
 
-        // Match by inReplyTo or threadId
-        const matchesInReplyTo = reply.inReplyTo && reply.inReplyTo.includes(debt.message_id.replace(/[<>]/g, ''));
+        // Match by exact normalized inReplyTo Message-ID or threadId
+        const normalizedDebtMsgId = normalizeMsgId(debt.message_id);
+        const matchesInReplyTo =
+          Boolean(normalizedReplyTarget) &&
+           Boolean(normalizedDebtMsgId) &&
+          normalizedReplyTarget === normalizedDebtMsgId;
         const matchesThread = reply.threadId === debt.thread_id;
 
         if (matchesInReplyTo || matchesThread) {

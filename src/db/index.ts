@@ -11,10 +11,15 @@ export function getDb(): Database.Database {
 
   const dbDir = path.dirname(config.storage.dbPath);
   if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+    fs.mkdirSync(dbDir, { recursive: true, mode: 0o700 });
   }
 
   dbInstance = new Database(config.storage.dbPath);
+  try {
+    fs.chmodSync(config.storage.dbPath, 0o600);
+  } catch {
+    // Ignore chmod errors on non-POSIX filesystems
+  }
   dbInstance.pragma('journal_mode = WAL');
   dbInstance.pragma('foreign_keys = ON');
   dbInstance.exec(CREATE_TABLES_SQL);

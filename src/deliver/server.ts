@@ -1,32 +1,114 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { dbService } from '../db/index.js';
 import { debtEngine } from '../engine/debt.js';
 
+const MAX_BODY_BYTES = 4096;
+
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'no-referrer',
+  'Content-Security-Policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; script-src-attr 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+};
+
+function timingSafeCompare(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, 'utf-8');
+  const bufB = Buffer.from(b, 'utf-8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function isAuthorized(req: http.IncomingMessage): boolean {
+  const expectedToken = config.storage.webAuthToken;
+  if (!expectedToken) return true;
+
+  const authHeader = req.headers.authorization || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const provided = authHeader.slice(7).trim();
+    return timingSafeCompare(provided, expectedToken);
+  }
+  if (authHeader.startsWith('Basic ')) {
+    const decoded = Buffer.from(authHeader.slice(6).trim(), 'base64').toString('utf-8');
+    const colonIdx = decoded.indexOf(':');
+    const password = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : decoded;
+    return timingSafeCompare(password, expectedToken);
+  }
+  return false;
+}
+
+function isSameOrigin(req: http.IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true; // Non-browser or same-origin requests omitting Origin still require application/json
+  try {
+    const originHost = new URL(origin).host;
+    return originHost === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
 export function createWebServer(): http.Server {
   const server = http.createServer((req, res) => {
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+      res.setHeader(k, v);
+    }
+
+    if (!isAuthorized(req)) {
+      res.writeHead(401, {
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': 'Basic realm="Sloth Digest"',
+      });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
 
     // API: Dismiss reply debt
     if (req.method === 'POST' && url.pathname === '/api/dismiss') {
+      const contentType = req.headers['content-type'] || '';
+      if (!contentType.toLowerCase().startsWith('application/json') || !isSameOrigin(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Forbidden: requires same-origin application/json request' }));
+        return;
+      }
+
       let body = '';
-      req.on('data', (chunk) => (body += chunk));
+      let bodyBytes = 0;
+      let aborted = false;
+
+      req.on('data', (chunk: Buffer) => {
+        bodyBytes += chunk.length;
+        if (bodyBytes > MAX_BODY_BYTES) {
+          aborted = true;
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Payload too large' }));
+          req.destroy();
+          return;
+        }
+        body += chunk.toString('utf-8');
+      });
+
       req.on('end', () => {
+        if (aborted) return;
         try {
-          const { id } = JSON.parse(body || '{}');
-          if (!id) {
+          const parsed = JSON.parse(body || '{}');
+          const id = typeof parsed?.id === 'string' ? parsed.id.trim() : '';
+          if (!id || id.length > 128) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Missing id' }));
+            res.end(JSON.stringify({ error: 'Invalid or missing id' }));
             return;
           }
           const success = dbService.dismissReplyDebt(id);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success, id }));
-        } catch (e) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: (e as Error).message }));
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Malformed JSON body' }));
         }
       });
       return;
@@ -87,7 +169,8 @@ function renderDashboardHtml(data: {
   markdown: string;
 }): string {
   const d = data.selectedDigest;
-  const timeSaved = d ? `${Math.floor(d.read_time_saved_minutes / 60)}h ${Math.round(d.read_time_saved_minutes % 60)}m` : '0 min';
+  const timeSaved = d ? `${Math.floor(Number(d.read_time_saved_minutes || 0) / 60)}h ${Math.round(Number(d.read_time_saved_minutes || 0) % 60)}m` : '0 min';
+  const safeDigestDate = escapeHtml(String(d?.digest_date || new Date().toISOString().slice(0, 10)));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -235,7 +318,7 @@ function renderDashboardHtml(data: {
         <div>
           <h1>Sloth Digest</h1>
           <div style="font-size: 0.85rem; color: var(--text-muted);">
-            Overnight Executive Briefing • ${d?.digest_date || new Date().toISOString().slice(0, 10)}
+            Overnight Executive Briefing • ${safeDigestDate}
           </div>
         </div>
       </div>
@@ -244,11 +327,11 @@ function renderDashboardHtml(data: {
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-val">${d?.emails_processed ?? 0}</div>
+        <div class="stat-val">${Number(d?.emails_processed ?? 0)}</div>
         <div class="stat-lbl">Emails Ingested</div>
       </div>
       <div class="stat-card">
-        <div class="stat-val">${d?.threads_summarized ?? 0}</div>
+        <div class="stat-val">${Number(d?.threads_summarized ?? 0)}</div>
         <div class="stat-lbl">Threads Digested</div>
       </div>
       <div class="stat-card">
@@ -256,7 +339,7 @@ function renderDashboardHtml(data: {
         <div class="stat-lbl">Action Items</div>
       </div>
       <div class="stat-card">
-        <div class="stat-val" style="color: var(--success);">${timeSaved}</div>
+        <div class="stat-val" style="color: var(--success);">${escapeHtml(timeSaved)}</div>
         <div class="stat-lbl">Reading Time Saved</div>
       </div>
     </div>
@@ -265,16 +348,19 @@ function renderDashboardHtml(data: {
       <div class="section-title">🎯 Things You Need To Reply To</div>
       ${data.activeDebts.length === 0
         ? '<div style="color: var(--success); padding: 0.5rem 0;">🎉 No pending reply debt! Your inbox is up to date.</div>'
-        : data.activeDebts.map((item) => `
-          <div class="debt-item" id="debt-${item.id}">
+        : data.activeDebts.map((item) => {
+            const safeId = escapeHtml(String(item.id || ''));
+            return `
+          <div class="debt-item" id="debt-${safeId}">
             <div>
-              <span class="debt-badge">${item.badge}</span>
-              <div class="debt-subj">${item.subject} <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">from ${item.from}</span></div>
-              <div class="debt-ask">💡 ${item.ask}</div>
+              <span class="debt-badge">${escapeHtml(String(item.badge || ''))}</span>
+              <div class="debt-subj">${escapeHtml(String(item.subject || ''))} <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: normal;">from ${escapeHtml(String(item.from || ''))}</span></div>
+              <div class="debt-ask">💡 ${escapeHtml(String(item.ask || ''))}</div>
             </div>
-            <button class="btn-dismiss" onclick="dismissDebt('${item.id}')">Dismiss ✓</button>
+            <button class="btn-dismiss" data-debt-id="${safeId}">Dismiss ✓</button>
           </div>
-        `).join('')}
+        `;
+          }).join('')}
     </div>
 
     <div class="section-card">
@@ -307,16 +393,26 @@ function renderDashboardHtml(data: {
         alert('Could not dismiss item: ' + err.message);
       }
     }
+
+    document.addEventListener('click', (event) => {
+      const btn = event.target.closest('.btn-dismiss[data-debt-id]');
+      if (btn) {
+        const debtId = btn.getAttribute('data-debt-id');
+        if (debtId) dismissDebt(debtId);
+      }
+    });
   </script>
 </body>
 </html>`;
 }
 
-function escapeHtml(str: string): string {
+export function escapeHtml(str: string): string {
   return (str || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 if (process.argv[1] && process.argv[1].endsWith('server.ts')) {

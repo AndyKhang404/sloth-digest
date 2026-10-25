@@ -13,7 +13,11 @@ export function cleanEmailBody(
   isHtml = false,
   attachments: { filename?: string }[] = []
 ): CleanedEmailBody {
-  let plain = rawHtmlOrText || '';
+  // Strip invisible zero-width, bidirectional override, and non-whitespace control characters
+  let plain = (rawHtmlOrText || '').replace(
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g,
+    ''
+  );
 
   // 1. Convert HTML to clean text if necessary
   if (isHtml || /<[a-z][\s\S]*>/i.test(plain)) {
