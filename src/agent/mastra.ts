@@ -1,6 +1,54 @@
+import { Mastra } from '@mastra/core';
+import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { llamaClient } from './llama.js';
 import { EmailRecord } from '../db/index.js';
+import { config } from '../config.js';
+
+// ==========================================
+// Mastra Agents Definition
+// ==========================================
+
+export const triageAgent = new Agent({
+  id: 'email-triage-agent',
+  name: 'EmailTriageAgent',
+  instructions: 'You are an email triage classifier running locally. Categorize incoming emails into personal, transactional, or bulk.',
+  model: {
+    providerId: 'openai-compatible',
+    modelId: config.llama.modelName,
+    url: `${config.llama.serverUrl}/v1`,
+  },
+});
+
+export const threadSummarizerAgent = new Agent({
+  id: 'thread-summarizer-agent',
+  name: 'ThreadSummarizerAgent',
+  instructions: 'You are an executive email assistant. Summarize personal email threads into strictly two lines and detect pending action items.',
+  model: {
+    providerId: 'openai-compatible',
+    modelId: config.llama.modelName,
+    url: `${config.llama.serverUrl}/v1`,
+  },
+});
+
+export const digestOverviewAgent = new Agent({
+  id: 'digest-overview-agent',
+  name: 'DigestOverviewAgent',
+  instructions: 'You generate high-level two-line executive briefings synthesizing all summarized threads.',
+  model: {
+    providerId: 'openai-compatible',
+    modelId: config.llama.modelName,
+    url: `${config.llama.serverUrl}/v1`,
+  },
+});
+
+export const mastra = new Mastra({
+  agents: {
+    triageAgent,
+    threadSummarizerAgent,
+    digestOverviewAgent,
+  },
+});
 
 // ==========================================
 // 1. Triage / Classification
