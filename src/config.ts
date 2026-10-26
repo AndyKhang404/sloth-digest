@@ -34,6 +34,7 @@ export interface AppConfig {
     taskQueue: string;
     scheduleHour: number;
     scheduleMinute: number;
+    timezone: string;
   };
   ntfy: {
     url: string;
@@ -57,6 +58,7 @@ export function loadConfig(): AppConfig {
 
   const dbPath = path.resolve(process.env.SQLITE_DB_PATH || './data/sloth.db');
   const digestDir = path.resolve(process.env.DIGEST_OUTPUT_DIR || './data/digests');
+  const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   return {
     gmail: {
@@ -75,8 +77,9 @@ export function loadConfig(): AppConfig {
       address: process.env.TEMPORAL_ADDRESS || 'localhost:7233',
       namespace: process.env.TEMPORAL_NAMESPACE || 'default',
       taskQueue: process.env.TEMPORAL_TASK_QUEUE || 'sloth-digest',
-      scheduleHour: Number(process.env.DIGEST_SCHEDULE_HOUR) || 6,
-      scheduleMinute: Number(process.env.DIGEST_SCHEDULE_MINUTE) || 0,
+      scheduleHour: Number(process.env.DIGEST_SCHEDULE_HOUR ?? 6),
+      scheduleMinute: Number(process.env.DIGEST_SCHEDULE_MINUTE ?? 0),
+      timezone: process.env.DIGEST_SCHEDULE_TIMEZONE || process.env.TZ || systemTimezone,
     },
     ntfy: {
       url: process.env.NTFY_URL || 'http://localhost:8088/sloth-digest',

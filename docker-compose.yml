@@ -20,6 +20,8 @@ services:
     image: temporalio/admin-tools:latest
     container_name: sloth-temporal
     restart: unless-stopped
+    environment:
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
     entrypoint: ["temporal", "server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/home/temporal/temporal.db", "--ui-port", "8233"]
     ports:
       - "127.0.0.1:7233:7233"
@@ -32,6 +34,8 @@ services:
     image: binwiederhier/ntfy:latest
     container_name: sloth-ntfy
     restart: unless-stopped
+    environment:
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
     command: serve --cache-file /var/cache/ntfy/cache.db
     ports:
       - "127.0.0.1:8088:80"
@@ -49,6 +53,8 @@ services:
       - .env
     environment:
       # Container-to-container service networking overrides
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+      - DIGEST_SCHEDULE_TIMEZONE=${DIGEST_SCHEDULE_TIMEZONE:-Asia/Ho_Chi_Minh}
       - LLAMA_SERVER_URL=http://llama-server:8080
       - TEMPORAL_ADDRESS=temporal:7233
       - NTFY_URL=http://ntfy/sloth-digest

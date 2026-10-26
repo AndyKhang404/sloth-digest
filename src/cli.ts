@@ -1,8 +1,9 @@
-import { Connection, Client, ScheduleAlreadyRunning } from '@temporalio/client';
+import { Connection, Client } from '@temporalio/client';
 import { config } from './config.js';
 import { dbService } from './db/index.js';
 import { createWebServer } from './deliver/server.js';
 import { debtEngine } from './engine/debt.js';
+import { ensureTemporalSchedule } from './temporal/worker.js';
 import {
   fetchNewEmailsActivity,
   classifyEmailsActivity,
@@ -93,40 +94,8 @@ async function triggerTemporalWorkflow() {
 }
 
 async function setupTemporalSchedule() {
-  const hour = config.temporal.scheduleHour;
-  const minute = config.temporal.scheduleMinute;
-  const timeDisplay = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} AM`;
-
-  console.log(`Configuring ${timeDisplay} morning Temporal schedule at ${config.temporal.address}...`);
   try {
-    const connection = await Connection.connect({ address: config.temporal.address });
-    const client = new Client({ connection, namespace: config.temporal.namespace });
-
-    const scheduleId = 'sloth-nightly-digest-schedule';
-    try {
-      await client.schedule.create({
-        scheduleId,
-        spec: {
-          calendars: [{ hour, minute }],
-        },
-        action: {
-          type: 'startWorkflow',
-          workflowType: 'nightlyEmailDigestWorkflow',
-          taskQueue: config.temporal.taskQueue,
-          args: [{ immediateDelivery: false, sinceHours: 24 }],
-        },
-        policies: {
-          catchupWindow: '4h', // If the homelab was asleep or rebooting, catch up within 4 hours
-        },
-      });
-      console.log(`✅ Schedule '${scheduleId}' registered to run every morning at ${timeDisplay}.`);
-    } catch (e) {
-      if (e instanceof ScheduleAlreadyRunning) {
-        console.log(`Schedule '${scheduleId}' already exists and is active.`);
-      } else {
-        throw e;
-      }
-    }
+    await ensureTemporalSchedule();
   } catch (err) {
     console.error(`[temporal] Failed to configure schedule: ${(err as Error).message}`);
   }
