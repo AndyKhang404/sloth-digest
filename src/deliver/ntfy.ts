@@ -21,7 +21,7 @@ export async function sendNtfyDigest(options: NtfySendOptions): Promise<boolean>
     Title: encodedTitle,
     Priority: options.replyCount > 0 ? '4' : '3',
     Tags: 'sloth,envelope,robot',
-    Click: `http://localhost:${config.storage.webPort}/`,
+    Click: `${config.storage.dashboardUrl}/`,
   };
 
   // If scheduled delivery time is requested and not immediate

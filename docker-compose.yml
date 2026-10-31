@@ -38,7 +38,7 @@ services:
       - TZ=${TZ:-Asia/Ho_Chi_Minh}
     command: serve --cache-file /var/cache/ntfy/cache.db
     ports:
-      - "127.0.0.1:8088:80"
+      - "${NTFY_PORT:-8088}:80"
     volumes:
       - ntfy_cache:/var/cache/ntfy
 
@@ -58,6 +58,7 @@ services:
       - LLAMA_SERVER_URL=http://llama-server:8080
       - TEMPORAL_ADDRESS=temporal:7233
       - NTFY_URL=http://ntfy/sloth-digest
+      - DASHBOARD_URL=${DASHBOARD_URL:-}
       - SQLITE_DB_PATH=/app/data/sloth.db
       - DIGEST_OUTPUT_DIR=/app/data/digests
       - WEB_PORT=${WEB_PORT:-3000}

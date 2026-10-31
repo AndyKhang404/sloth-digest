@@ -186,7 +186,7 @@ docker compose up -d --build
 | :--- | :--- | :--- | :--- |
 | `sloth-app` | Unified Temporal Worker + Web Dashboard | `0.0.0.0:3000` | Plain `http://` LAN/local dashboard (runs as non-root `node` user, `sloth_data` volume) |
 | `sloth-temporal` | Temporal Server + Built-in Web UI | `127.0.0.1:7233`, `127.0.0.1:8233` | Loopback-only gRPC & Web UI (runs as non-root `temporal` user, `temporal_data` volume) |
-| `sloth-ntfy` | Self-hosted Push Notification Server | `127.0.0.1:8088` | Loopback-only HTTP gateway (`ntfy_cache` volume) |
+| `sloth-ntfy` | Self-hosted Push Notification Server | `0.0.0.0:8088` | LAN HTTP gateway for mobile push (`ntfy_cache` volume) |
 | `sloth-llama` | Local Gemma GGUF Inference (`llama.cpp`) | `127.0.0.1:8080` | Loopback-only OpenAI-compatible `/v1` server (`./models` mounted read-only) |
 
 > **Note when connecting from another machine on your LAN:** Connect using plain HTTP (`http://<HOST_IP>:3000/`). If your browser has HTTPS-Only Mode enabled, disable it for `<HOST_IP>:3000` so the browser does not attempt a TLS handshake against the plain HTTP server.
