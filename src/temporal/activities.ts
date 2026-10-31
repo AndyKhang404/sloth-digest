@@ -16,6 +16,25 @@ function safeHeartbeat(details: unknown) {
   }
 }
 
+export async function withHeartbeat<T>(
+  details: string,
+  fn: () => Promise<T>,
+  intervalMs = 15_000
+): Promise<T> {
+  safeHeartbeat(`${details} (started)`);
+
+  const timer = setInterval(() => {
+    safeHeartbeat(`${details} (in-progress)`);
+  }, intervalMs);
+
+  try {
+    return await fn();
+  } finally {
+    clearInterval(timer);
+    safeHeartbeat(`${details} (completed)`);
+  }
+}
+
 export interface IngestActivityResult {
   inboxFetched: number;
   sentFetched: number;
@@ -24,9 +43,9 @@ export interface IngestActivityResult {
 }
 
 export async function fetchNewEmailsActivity(): Promise<IngestActivityResult> {
-  safeHeartbeat('Connecting to IMAP and fetching new emails...');
-
-  const result = await ingestGmailMessages();
+  const result = await withHeartbeat('Connecting to IMAP and fetching new emails', () =>
+    ingestGmailMessages()
+  );
   safeHeartbeat(`Fetched ${result.inboxFetched} inbox emails, ${result.sentFetched} sent emails`);
 
   // Reconcile sent replies against existing reply debt immediately
@@ -54,9 +73,10 @@ export async function classifyEmailsActivity(): Promise<{
 
   for (let i = 0; i < unclassified.length; i++) {
     const email = unclassified[i];
-    safeHeartbeat(`Classifying email ${i + 1}/${unclassified.length}: ${email.subject}`);
-
-    const res = await classifyEmailWithGemma(email);
+    const res = await withHeartbeat(
+      `Classifying email ${i + 1}/${unclassified.length}: ${email.subject}`,
+      () => classifyEmailWithGemma(email)
+    );
     dbService.updateEmailCategory(email.message_id, res.category, res.confidence);
 
     if (res.category === 'personal') personal++;
@@ -92,13 +112,14 @@ export interface SummarizeThreadOutput {
 }
 
 export async function summarizeThreadActivity(input: SummarizeThreadInput): Promise<SummarizeThreadOutput> {
-  safeHeartbeat(`Summarizing thread: ${input.subject}`);
-
   const messages = dbService.getEmailsByThread(input.threadId);
   const personalMessages = messages.filter((m) => m.category === 'personal');
   const targetMessages = personalMessages.length > 0 ? personalMessages : messages;
 
-  const result = await summarizeThreadWithGemma(input.subject, targetMessages);
+  const result = await withHeartbeat(
+    `Summarizing thread: ${input.subject}`,
+    () => summarizeThreadWithGemma(input.subject, targetMessages)
+  );
 
   let debtId: string | undefined;
   if (result.needs_reply && result.cited_message_ids.length > 0) {
@@ -139,8 +160,6 @@ export async function reduceAndGenerateDigestActivity(input: ReduceDigestInput):
   markdownPath: string;
   minutesSaved: number;
 }> {
-  safeHeartbeat('Reducing thread summaries into executive briefing...');
-
   const activeDebts = dbService.getOpenReplyDebt();
   const allPersonalEmails = getDb().prepare(`
     SELECT body_cleaned FROM emails WHERE category = 'personal' AND date >= ?
@@ -160,10 +179,14 @@ export async function reduceAndGenerateDigestActivity(input: ReduceDigestInput):
     summary: t.summary,
   }));
 
-  const overviewResult = await generateOverallOverviewWithGemma(
-    threadSummaries,
-    activeDebts.length,
-    bulkCountRow?.count || 0
+  const overviewResult = await withHeartbeat(
+    'Synthesizing overall overview with Gemma',
+    () =>
+      generateOverallOverviewWithGemma(
+        threadSummaries,
+        activeDebts.length,
+        bulkCountRow?.count || 0
+      )
   );
 
   // Calculate lazy payoff

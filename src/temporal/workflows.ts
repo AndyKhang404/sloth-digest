@@ -10,7 +10,7 @@ const {
   deliverNotificationActivity,
 } = proxyActivities<typeof activities>({
   startToCloseTimeout: '15m',
-  heartbeatTimeout: '1m',
+  heartbeatTimeout: '3m',
   retry: {
     initialInterval: '2s',
     backoffCoefficient: 2,
